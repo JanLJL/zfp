@@ -182,6 +182,35 @@ template<int BlockSize>
 struct inv_transform;
 
 template<>
+struct inv_transform<256>
+{
+  template<typename Int>
+  __device__ void inv_xform(Int *p)
+  {
+    // transform along w
+    for (uint z = 0; z < 4; z++)
+      for (uint y = 0; y < 4; y++)
+        for (uint x = 0; x < 4; x++)
+          inv_lift<Int, 64>(p + 1 * x + 4 * y + 16 * z);
+    // transform along z
+    for (uint w = 0; w < 4; w++)
+      for (uint y = 0; y < 4; y++)
+        for (uint x = 0; x < 4; x++)
+          inv_lift<Int, 16>(p + 1 * x + 4 * y + 64 * w);
+    // transform along y
+    for (uint x = 0; x < 4; x++)
+      for (uint z = 0; z < 4; z++)
+        for (uint w = 0; w < 4; w++)
+          inv_lift<Int, 4>(p + 64 * z + 16 * z + 1 * x);
+    // transform along x
+    for (uint w = 0; w < 4; w++)
+      for (uint z = 0; z < 4; z++)
+        for (uint y = 0; y < 4; y++)
+          inv_lift<Int, 1>(p + 4 * y + 16 * z + 64 * w); 
+  }
+};
+
+template<>
 struct inv_transform<64>
 {
   template<typename Int>

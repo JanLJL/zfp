@@ -33,4 +33,12 @@ _t2(compress_strided_cuda, Scalar, 3)(zfp_stream* stream, const zfp_field* field
     cuda_compress(stream, field);   
 }
 
+/* compress 4d strided array */
+static void
+_t2(compress_strided_cuda, Scalar, 4)(zfp_stream* stream, const zfp_field* field)
+{
+  if (zfp_stream_compression_mode(stream) == zfp_mode_fixed_rate)
+    cuda_compress(stream, field);   
+}
+
 #endif

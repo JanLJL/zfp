@@ -1,7 +1,7 @@
 #ifndef CUZFP_SHARED_H
 #define CUZFP_SHARED_H
 
-//#define CUDA_ZFP_RATE_PRINT 1
+#define CUDA_ZFP_RATE_PRINT 1
 typedef unsigned long long Word;
 #define Wsize ((uint)(CHAR_BIT * sizeof(Word)))
 
@@ -75,6 +75,18 @@ size_t calc_device_mem3d(const uint3 encoded_dims,
 {
   const size_t vals_per_block = 64;
   const size_t size = encoded_dims.x * encoded_dims.y * encoded_dims.z; 
+  size_t total_blocks = size / vals_per_block; 
+  const size_t bits_per_word = sizeof(Word) * 8;
+  const size_t total_bits = bits_per_block * total_blocks;
+  const size_t alloc_size = total_bits / bits_per_word;
+  return alloc_size * sizeof(Word);
+}
+
+size_t calc_device_mem4d(const uint4 encoded_dims, 
+                         const int bits_per_block)
+{
+  const size_t vals_per_block = 256;
+  const size_t size = encoded_dims.x * encoded_dims.y * encoded_dims.z * encoded_dims.w; 
   size_t total_blocks = size / vals_per_block; 
   const size_t bits_per_word = sizeof(Word) * 8;
   const size_t total_bits = bits_per_block * total_blocks;
@@ -252,6 +264,13 @@ inv_lift(Int* p)
 template<int BlockSize>
 __device__ inline
 const unsigned char* get_perm();
+
+template<>
+__device__ inline
+const unsigned char* get_perm<256>()
+{
+  return perm_4d;
+}
 
 template<>
 __device__ inline

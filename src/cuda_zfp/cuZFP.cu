@@ -5,10 +5,12 @@
 #include "encode1.cuh"
 #include "encode2.cuh"
 #include "encode3.cuh"
+#include "encode4.cuh"
 
 #include "decode1.cuh"
 #include "decode2.cuh"
 #include "decode3.cuh"
+#include "decode4.cuh"
 
 #include "ErrorCheck.h"
 
@@ -27,7 +29,30 @@
 namespace internal 
 { 
   
-bool is_contigous3d(const uint dims[3], const int3 &stride, long long int &offset)
+bool is_contigous4d(const uint dims[4], const int4 &stride, long long int &offset)
+{
+  typedef long long int int64;
+  int64 idims[4];
+  idims[0] = dims[0];
+  idims[1] = dims[1];
+  idims[2] = dims[2];
+  idims[3] = dims[3];
+
+  int64 imin = std::min(stride.x,0) * (idims[0] - 1) + 
+               std::min(stride.y,0) * (idims[1] - 1) + 
+               std::min(stride.z,0) * (idims[2] - 1) +
+               std::min(stride.w,0) * (idims[3] - 1);
+  int64 imax = std::max(stride.x,0) * (idims[0] - 1) + 
+               std::max(stride.y,0) * (idims[1] - 1) + 
+               std::max(stride.z,0) * (idims[2] - 1) +
+               std::max(stride.w,0) * (idims[3] - 1);
+  offset = imin;
+  int64 ns = idims[0] * idims[1] * idims[2] * idims[3];
+
+  return (imax - imin + 1 == ns);
+}
+
+bool is_contigous3d(const uint dims[4], const int4 &stride, long long int &offset)
 {
   typedef long long int int64;
   int64 idims[3];
@@ -48,7 +73,7 @@ bool is_contigous3d(const uint dims[3], const int3 &stride, long long int &offse
   return (imax - imin + 1 == ns);
 }
 
-bool is_contigous2d(const uint dims[3], const int3 &stride, long long int &offset)
+bool is_contigous2d(const uint dims[4], const int4 &stride, long long int &offset)
 {
   typedef long long int int64;
   int64 idims[2];
@@ -72,15 +97,20 @@ bool is_contigous1d(uint dim, const int &stride, long long int &offset)
   return std::abs(stride) == 1;
 }
 
-bool is_contigous(const uint dims[3], const int3 &stride, long long int &offset)
+bool is_contigous(const uint dims[4], const int4 &stride, long long int &offset)
 {
   int d = 0;
   
   if(dims[0] != 0) d++;
   if(dims[1] != 0) d++;
   if(dims[2] != 0) d++;
+  if(dims[3] != 0) d++;
 
-  if(d == 3)
+  if (d == 4)
+  {
+    return is_contigous4d(dims, stride, offset);
+  }
+  else if(d == 3)
   {
     return is_contigous3d(dims, stride, offset);
   }
@@ -98,12 +128,12 @@ bool is_contigous(const uint dims[3], const int3 &stride, long long int &offset)
 // encode expects device pointers
 //
 template<typename T>
-size_t encode(uint dims[3], int3 stride, int bits_per_block, T *d_data, Word *d_stream)
+size_t encode(uint dims[4], int4 stride, int bits_per_block, T *d_data, Word *d_stream)
 {
 
   int d = 0;
   size_t len = 1;
-  for(int i = 0; i < 3; ++i)
+  for(int i = 0; i < 4; ++i)
   {
     if(dims[i] != 0)
     {
@@ -135,7 +165,17 @@ size_t encode(uint dims[3], int3 stride, int bits_per_block, T *d_data, Word *d_
     s.y = stride.y; 
     s.z = stride.z; 
     uint3 ndims = make_uint3(dims[0], dims[1], dims[2]);
-    stream_size = cuZFP::encode<T>(ndims, s, d_data, d_stream, bits_per_block); 
+    stream_size = cuZFP::encode3<T>(ndims, s, d_data, d_stream, bits_per_block); 
+  }
+  else if(d == 4)
+  {
+    int4 s;
+    s.x = stride.x;
+    s.y = stride.y;
+    s.z = stride.z;
+    s.w = stride.w;
+    uint4 ndims = make_uint4(dims[0], dims[1], dims[2], dims[3]);
+    stream_size = cuZFP::encode4<T>(ndims, s, d_data, d_stream, bits_per_block);
   }
 
   errors.chk("Encode");
@@ -144,7 +184,7 @@ size_t encode(uint dims[3], int3 stride, int bits_per_block, T *d_data, Word *d_
 }
 
 template<typename T>
-size_t decode(uint ndims[3], int3 stride, int bits_per_block, Word *stream, T *out)
+size_t decode(uint ndims[4], int4 stride, int bits_per_block, Word *stream, T *out)
 {
 
   int d = 0;
@@ -158,8 +198,20 @@ size_t decode(uint ndims[3], int3 stride, int bits_per_block, Word *stream, T *o
       out_size *= ndims[i];
     }
   }
+ 
+  if(d == 4)
+  {
+    uint4 dims = make_uint4(ndims[0], ndims[1], ndims[2], ndims[3]);
 
-  if(d == 3)
+    int4 s;
+    s.x = stride.x; 
+    s.y = stride.y; 
+    s.z = stride.z; 
+    s.w = stride.w;
+
+    stream_bytes = cuZFP::decode4<T>(dims, s, stream, out, bits_per_block); 
+  }
+  else if(d == 3)
   {
     uint3 dims = make_uint3(ndims[0], ndims[1], ndims[2]);
 
@@ -255,7 +307,7 @@ void * offset_void(zfp_type type, void *ptr, long long int offset)
   return offset_ptr;
 }
 
-void *setup_device_field_compress(const zfp_field *field, const int3 &stride, long long int &offset)
+void *setup_device_field_compress(const zfp_field *field, const int4 &stride, long long int &offset)
 {
   bool field_device = cuZFP::is_gpu_ptr(field->data);
 
@@ -265,15 +317,16 @@ void *setup_device_field_compress(const zfp_field *field, const int3 &stride, lo
     return field->data;
   }
   
-  uint dims[3];
+  uint dims[4];
   dims[0] = field->nx;
   dims[1] = field->ny;
   dims[2] = field->nz;
+  dims[3] = field->nw;
 
   size_t type_size = zfp_type_size(field->type);
 
   size_t field_size = 1;
-  for(int i = 0; i < 3; ++i)
+  for(int i = 0; i < 4; ++i)
   {
     if(dims[i] != 0)
     {
@@ -296,7 +349,7 @@ void *setup_device_field_compress(const zfp_field *field, const int3 &stride, lo
   return offset_void(field->type, d_data, -offset);
 }
 
-void *setup_device_field_decompress(const zfp_field *field, const int3 &stride, long long int &offset)
+void *setup_device_field_decompress(const zfp_field *field, const int4 &stride, long long int &offset)
 {
   bool field_device = cuZFP::is_gpu_ptr(field->data);
 
@@ -306,10 +359,11 @@ void *setup_device_field_decompress(const zfp_field *field, const int3 &stride, 
     return field->data;
   }
 
-  uint dims[3];
+  uint dims[4];
   dims[0] = field->nx;
   dims[1] = field->ny;
   dims[2] = field->nz;
+  dims[3] = field->nw;
 
   size_t type_size = zfp_type_size(field->type);
 
@@ -357,15 +411,17 @@ void cleanup_device_ptr(void *orig_ptr, void *d_ptr, size_t bytes, long long int
 size_t
 cuda_compress(zfp_stream *stream, const zfp_field *field)
 {
-  uint dims[3];
+  uint dims[4];
   dims[0] = field->nx;
   dims[1] = field->ny;
   dims[2] = field->nz;
+  dims[3] = field->nw;
 
-  int3 stride;  
+  int4 stride;  
   stride.x = field->sx ? field->sx : 1;
   stride.y = field->sy ? field->sy : field->nx;
   stride.z = field->sz ? field->sz : field->nx * field->ny;
+  stride.w = field->sw ? field->sw : field->nx * field->ny * field->nz;
   
   size_t stream_bytes = 0;
   long long int offset = 0; 
@@ -379,6 +435,7 @@ cuda_compress(zfp_stream *stream, const zfp_field *field)
 
   Word *d_stream = internal::setup_device_stream_compress(stream, field);
 
+  // TODO JL
   if(field->type == zfp_type_float)
   {
     float* data = (float*) d_data;
@@ -416,15 +473,17 @@ cuda_compress(zfp_stream *stream, const zfp_field *field)
 void 
 cuda_decompress(zfp_stream *stream, zfp_field *field)
 {
-  uint dims[3];
+  uint dims[4];
   dims[0] = field->nx;
   dims[1] = field->ny;
   dims[2] = field->nz;
+  dims[3] = field->nw;
    
-  int3 stride;  
+  int4 stride;  
   stride.x = field->sx ? field->sx : 1;
   stride.y = field->sy ? field->sy : field->nx;
   stride.z = field->sz ? field->sz : field->nx * field->ny;
+  stride.w = field->sw ? field->sw : field->nx * field->ny * field->nz;
 
   size_t decoded_bytes = 0;
   long long int offset = 0;

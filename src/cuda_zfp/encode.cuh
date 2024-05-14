@@ -152,6 +152,36 @@ template<int BlockSize>
 struct transform;
 
 template<>
+struct transform<256>
+{
+  template<typename Int>
+  __device__ void fwd_xform(Int *p)
+  {
+    uint x, y, z, w;
+    /* transform along x */
+    for (w = 0; w < 4; w++)
+      for (z = 0; z < 4; z++)
+        for (y = 0; y < 4; y++)
+          fwd_lift<Int,1>(p + 4 * y + 16 * z + 64 * w);
+    /* transform along y */
+    for (x = 0; x < 4; x++)
+      for (z = 0; z < 4; z++)
+        for (w = 0; w < 4; w++)
+          fwd_lift<Int,4>(p + 64 * z + 16 * z + 1 * x);
+    /* transform along z */
+    for (w = 0; w < 4; w++)
+      for (y = 0; y < 4; y++)
+        for (x = 0; x < 4; x++)
+          fwd_lift<Int,16>(p + 1 * x + 4 * y + 64 * w);
+    /* transform along w */
+    for (z = 0; z < 4; z++)
+      for (y = 0; y < 4; y++)
+        for (x = 0; x < 4; x++)
+          fwd_lift<Int,64>(p + 1 * x + 4 * y + 16 * z);
+   }
+};
+
+template<>
 struct transform<64>
 {
   template<typename Int>
@@ -365,6 +395,28 @@ void inline __device__ zfp_encode_block(Scalar *fblock,
 
     encode_block<Int, BlockSize>(block_writer, maxbits - ebits, maxprec, iblock);
   }
+}
+
+template<>
+void inline __device__ zfp_encode_block<int, 256>(int *fblock,
+                                             const int maxbits,
+                                             const uint block_idx,
+                                             Word *stream)
+{
+  BlockWriter<256> block_writer(stream, maxbits, block_idx);
+  const int intprec = get_precision<int>();
+  encode_block<int, 256>(block_writer, maxbits, intprec, fblock);
+}
+
+template<>
+void inline __device__ zfp_encode_block<long long int, 256>(long long int *fblock,
+                                                       const int maxbits,
+                                                       const uint block_idx,
+                                                       Word *stream)
+{
+  BlockWriter<256> block_writer(stream, maxbits, block_idx);
+  const int intprec = get_precision<long long int>();
+  encode_block<long long int, 256>(block_writer, maxbits, intprec, fblock);
 }
 
 template<>
