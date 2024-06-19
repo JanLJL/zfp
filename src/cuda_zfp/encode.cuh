@@ -165,13 +165,13 @@ struct transform<256>
           fwd_lift<Int,1>(p + 4 * y + 16 * z + 64 * w);
     /* transform along y */
     for (x = 0; x < 4; x++)
-      for (z = 0; z < 4; z++)
-        for (w = 0; w < 4; w++)
-          fwd_lift<Int,4>(p + 64 * z + 16 * z + 1 * x);
+      for (w = 0; w < 4; w++)
+        for (z = 0; z < 4; z++)
+          fwd_lift<Int,4>(p + 64 * w + 16 * z + 1 * x);
     /* transform along z */
-    for (w = 0; w < 4; w++)
-      for (y = 0; y < 4; y++)
-        for (x = 0; x < 4; x++)
+    for (y = 0; y < 4; y++)
+      for (x = 0; x < 4; x++)
+        for (w = 0; w < 4; w++)
           fwd_lift<Int,16>(p + 1 * x + 4 * y + 64 * w);
     /* transform along w */
     for (z = 0; z < 4; z++)

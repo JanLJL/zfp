@@ -5,6 +5,7 @@
 #include "shared.h"
 #include "encode.cuh"
 #include "type_info.cuh"
+#include <cstring>
 
 #define ZFP_4D_BLOCK_SIZE 256
 namespace cuZFP{
@@ -14,6 +15,26 @@ __device__ __host__ inline
 void gather_partial4(Scalar* q, const Scalar* p, int nx, int ny, int nz, int nw, int sx, int sy, int sz, int sw)
 {
   uint x, y, z, w;
+  //for (w = 0; w < nw; w++, p += sw - nz * sz) {
+  //    for (z = 0; z < nz; z++, p += sz - ny * sy) {
+  //        for (y = 0; y < ny; y++, p += sy - nx * sx) {
+  //            for (x = 0; x < nx; x++, p += sx) {
+  //                q[64 * w + 16 * z + 4 * y + x] = *p;
+  //            }
+  //            pad_block(q + 64 * w + 16 * z + 4 * y, nx, 1);
+  //        }
+  //        for (x = 0; x < 4; x++)
+  //            pad_block(q + 64 * w + 16 * z + x, ny, 4);
+  //    }
+  //    for (y = 0; y < 4; y++)
+  //        for (x = 0; x < 4; x++)
+  //            pad_block(q + 64 * w + 4 * y + x, nz, 16);
+  //}
+  //for (z = 0; z < 4; z++)
+  //  for (y = 0; y < 4; y++)
+  //    for (x = 0; x < 4; x++)
+  //      pad_block(q + 16 * z + 4 * y + x, nw, 64);
+
   for (w = 0; w < 4; w++)
     if (w < nw) {
       for (z = 0; z < 4; z++)
@@ -24,7 +45,7 @@ void gather_partial4(Scalar* q, const Scalar* p, int nx, int ny, int nz, int nw,
                 if (x < nx) {
                   q[64 * w + 16 * z + 4 * y + x] = *p;
                   p += sx;
-              }
+                }
               p += sy - nx * sx;
               pad_block(q + 64 * w + 16 * z + 4 * y, nx, 1);
             }
@@ -40,7 +61,7 @@ void gather_partial4(Scalar* q, const Scalar* p, int nx, int ny, int nz, int nw,
   for (z = 0; z < 4; z++)
     for (y = 0; y < 4; y++)
       for (x = 0; x < 4; x++)
-        pad_block(q + 16 * z + 4 * y + w, nw, 64);
+        pad_block(q + 16 * z + 4 * y + x, nw, 64);
 }
 
 template<typename Scalar> 
@@ -54,6 +75,7 @@ void gather4(Scalar* q, const Scalar* p, int sx, int sy, int sz, int sw)
         for (x = 0; x < 4; x++, p += sx)
           *q++ = *p;
 }
+
 
 template<class Scalar>
 __global__
@@ -106,13 +128,13 @@ cudaEncode4(const uint maxbits,
   if(block.y + 4 > dims.y) partial = true;
   if(block.z + 4 > dims.z) partial = true;
   if(block.w + 4 > dims.w) partial = true;
- 
+
   if(partial) 
   {
-    const uint nx = block.x + 4u > dims.x ? dims.x - block.x : 4;
-    const uint ny = block.y + 4u > dims.y ? dims.y - block.y : 4;
-    const uint nz = block.z + 4u > dims.z ? dims.z - block.z : 4;
-    const uint nw = block.w + 4u > dims.w ? dims.w - block.w : 4;
+    const uint nx = block.x + 4 > dims.x ? dims.x - block.x : 4u;
+    const uint ny = block.y + 4 > dims.y ? dims.y - block.y : 4u;
+    const uint nz = block.z + 4 > dims.z ? dims.z - block.z : 4u;
+    const uint nw = block.w + 4 > dims.w ? dims.w - block.w : 4u;
 
     gather_partial4(fblock, scalars + offset, nx, ny, nz, nw, stride.x, stride.y, stride.z, stride.w);
 
@@ -121,7 +143,20 @@ cudaEncode4(const uint maxbits,
   {
     gather4(fblock, scalars + offset, stride.x, stride.y, stride.z, stride.w);
   }
+  printf("Pre GPU Compression:\n");
+  for (int i=0; i<256; ++i) {
+      printf("%.3f ", (double)fblock[i]);
+      if ((i+1)%16 ==0) printf("\n");
+  }
+  printf("\n======================\n");
+
   zfp_encode_block<Scalar, ZFP_4D_BLOCK_SIZE>(fblock, maxbits, block_idx, stream);  
+  printf("Post GPU Compression:\n");
+  for (int i=0; i<256; ++i) {
+      printf("0x%02x ", (char)stream[i]);
+      if ((i+1)%16 ==0) printf("\n");
+  }
+  printf("\n======================\n");
 
 }
 
@@ -135,8 +170,7 @@ size_t encode4launch(uint4 dims,
                      Word *stream,
                      const int maxbits)
 {
-
-  const int cuda_block_size = 512;
+  const int cuda_block_size = 128;
   dim3 block_size = dim3(cuda_block_size, 1, 1);
 
   uint4 zfp_pad(dims); 
@@ -145,7 +179,7 @@ size_t encode4launch(uint4 dims,
   if(zfp_pad.z % 4 != 0) zfp_pad.z += 4 - dims.z % 4;
   if(zfp_pad.w % 4 != 0) zfp_pad.w += 4 - dims.w % 4;
 
-  const uint zfp_blocks = (zfp_pad.x * zfp_pad.y * zfp_pad.z * zfp_pad.w) / 256; 
+  const uint zfp_blocks = (zfp_pad.x * zfp_pad.y * zfp_pad.z * zfp_pad.w) / ZFP_4D_BLOCK_SIZE;
 
   //
   // we need to ensure that we launch a multiple of the 

@@ -66,7 +66,8 @@ cudaDecode4(Word *blocks,
   const ull block_idx = blockId * blockDim.x + threadIdx.x;
   
   const int total_blocks = (padded_dims.x * padded_dims.y * padded_dims.z * padded_dims.w) / 256; 
-  
+  //std::cout << "[DECOMP] total blocks: " << total_blocks << std::endl;
+
   if(block_idx >= total_blocks) 
   {
     return;
@@ -90,7 +91,7 @@ cudaDecode4(Word *blocks,
   block.x = (block_idx % block_dims.x) * 4; 
   block.y = ((block_idx / block_dims.x) % block_dims.y) * 4; 
   block.z = ((block_idx / (block_dims.x * block_dims.y)) % block_dims.z) * 4; 
-  block.w = (block_idx / (block_dims.x * block_dims.y * block_dims.z)) * 4; 
+  block.w = ((block_idx / (block_dims.x * block_dims.y * block_dims.z) %block_dims.w)) * 4;
   
   // default strides
   const ll offset = (ll)block.x * stride.x + (ll)block.y * stride.y + (ll)block.z * stride.z + (ll)block.w * stride.w; 
@@ -100,6 +101,7 @@ cudaDecode4(Word *blocks,
   if(block.y + 4 > dims.y) partial = true;
   if(block.z + 4 > dims.z) partial = true;
   if(block.w + 4 > dims.w) partial = true;
+  //std::cout << "Partial=" << partial << std::endl;
   if(partial)
   {
     const uint nx = block.x + 4u > dims.x ? dims.x - block.x : 4;
