@@ -143,21 +143,8 @@ cudaEncode4(const uint maxbits,
   {
     gather4(fblock, scalars + offset, stride.x, stride.y, stride.z, stride.w);
   }
-  printf("Pre GPU Compression:\n");
-  for (int i=0; i<256; ++i) {
-      printf("%.3f ", (double)fblock[i]);
-      if ((i+1)%16 ==0) printf("\n");
-  }
-  printf("\n======================\n");
 
   zfp_encode_block<Scalar, ZFP_4D_BLOCK_SIZE>(fblock, maxbits, block_idx, stream);  
-  printf("Post GPU Compression:\n");
-  for (int i=0; i<256; ++i) {
-      printf("0x%02x ", (char)stream[i]);
-      if ((i+1)%16 ==0) printf("\n");
-  }
-  printf("\n======================\n");
-
 }
 
 //

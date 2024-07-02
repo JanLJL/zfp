@@ -178,6 +178,55 @@ void decode_ints(BlockReader<size> &reader, uint maxbits, UInt *data)
 #endif
 }
 
+template <typename Scalar, uint size, typename UInt>
+inline __device__
+void decode_many_ints(BlockReader<size> &reader, uint maxbits, UInt *data)
+{
+  const int intprec = get_precision<Scalar>();
+  // maxprec = 64;
+  const uint kmin = 0; //= intprec > maxprec ? intprec - maxprec : 0;
+  uint bits = maxbits;
+  uint k, m, n;
+
+  // initialize data array to all zeros
+  memset(data, 0, size * sizeof(UInt));
+
+  // decode one bit plane at a time from MSB to LSB
+  for (k = intprec, m = n = 0; bits && (m = 0, k-- > kmin);) {
+    // step 1: decode first n bits of bit plane #k
+    m = min(n, bits);
+    bits -= m;
+    for (int i=0; i<m; i++)
+      if (reader.read_bit())
+        data[i] += (UInt)1u << k;
+
+    // step 2: unary run-length decode remainder of bit plane
+    for (; bits && n < size; n++, m = n) {
+      bits--;
+      if (reader.read_bit()) {
+        // positive group test; scan for next one-bit
+        for (; bits && n < size - 1; n++) {
+          bits--;
+          if (reader.read_bit())
+            break;
+        }
+        // set bit and continue decoding bit plane
+        data[n] += (UInt)1 << k;
+      }
+      else {
+        // negative group test; done with bit plane
+        m = size;
+        break;
+      }
+    }
+  }
+
+#if ZFP_ROUNDING_MODE == ZFP_ROUND_LAST
+  // bias values to achieve proper rounding
+  inv_round<UInt, size>(data, m, intprec - k);
+#endif
+}
+
 template<int BlockSize>
 struct inv_transform;
 
@@ -290,7 +339,10 @@ __device__ void zfp_decode(BlockReader<BlockSize> &reader, Scalar *fblock, uint 
 
     UInt ublock[BlockSize];
 
-    decode_ints<Scalar, BlockSize, UInt>(reader, maxbits, ublock);
+    if (BlockSize <= 64)
+      decode_ints<Scalar, BlockSize, UInt>(reader, maxbits, ublock);
+    else
+      decode_many_ints<Scalar, BlockSize, UInt>(reader, maxbits, ublock);
 
     Int iblock[BlockSize];
     const unsigned char *perm = get_perm<BlockSize>();

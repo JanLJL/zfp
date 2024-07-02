@@ -190,7 +190,7 @@ size_t decode(uint ndims[4], int4 stride, int bits_per_block, Word *stream, T *o
   int d = 0;
   size_t out_size = 1;
   size_t stream_bytes = 0;
-  for(int i = 0; i < 3; ++i)
+  for(int i = 0; i < 4; ++i)
   {
     if(ndims[i] != 0)
     {
@@ -435,7 +435,6 @@ cuda_compress(zfp_stream *stream, const zfp_field *field)
 
   Word *d_stream = internal::setup_device_stream_compress(stream, field);
 
-  // TODO JL
   if(field->type == zfp_type_float)
   {
     float* data = (float*) d_data;
