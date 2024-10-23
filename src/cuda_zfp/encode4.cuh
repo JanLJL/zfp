@@ -15,6 +15,7 @@ __device__ __host__ inline
 void gather_partial4(Scalar* q, const Scalar* p, int nx, int ny, int nz, int nw, int sx, int sy, int sz, int sw)
 {
   uint x, y, z, w;
+  ////// OPTION 1
   //for (w = 0; w < nw; w++, p += sw - nz * sz) {
   //    for (z = 0; z < nz; z++, p += sz - ny * sy) {
   //        for (y = 0; y < ny; y++, p += sy - nx * sx) {
@@ -30,11 +31,9 @@ void gather_partial4(Scalar* q, const Scalar* p, int nx, int ny, int nz, int nw,
   //        for (x = 0; x < 4; x++)
   //            pad_block(q + 64 * w + 4 * y + x, nz, 16);
   //}
-  //for (z = 0; z < 4; z++)
-  //  for (y = 0; y < 4; y++)
-  //    for (x = 0; x < 4; x++)
-  //      pad_block(q + 16 * z + 4 * y + x, nw, 64);
+  //////
 
+  ////// OPTION 2
   for (w = 0; w < 4; w++)
     if (w < nw) {
       for (z = 0; z < 4; z++)
@@ -58,6 +57,8 @@ void gather_partial4(Scalar* q, const Scalar* p, int nx, int ny, int nz, int nw,
           pad_block(q + 64 * w + 4 * y + x, nz, 16);
       p += sw - nz * sz;
     }
+  //////
+  
   for (z = 0; z < 4; z++)
     for (y = 0; y < 4; y++)
       for (x = 0; x < 4; x++)

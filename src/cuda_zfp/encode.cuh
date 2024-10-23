@@ -3,6 +3,8 @@
 
 #include "shared.h"
 
+//#define WRITE_BIT_COMP
+
 namespace cuZFP
 {
 
@@ -357,6 +359,12 @@ void inline __device__ encode_block(BlockWriter<BlockSize> &stream,
   uint intprec = (uint)(CHAR_BIT * sizeof(UInt));
   uint kmin = intprec > maxprec ? intprec - maxprec : 0;
   uint bits = maxbits;
+  
+#ifdef WRITE_BIT_COMP
+  uint64 writebuf[64] = {0};
+  //uint64 writebuf = 0;
+  int writebuf_pos = 0;
+#endif
 
   for (uint k = intprec, n = 0; bits && k-- > kmin;) {
     // step 1: extract bit plane #k to x
@@ -369,10 +377,46 @@ void inline __device__ encode_block(BlockWriter<BlockSize> &stream,
     bits -= m;
     x = stream.write_bits(x, m);
     // step 3: unary run-length encode remainder of bit plane
+#ifdef WRITE_BIT_COMP
+    writebuf[writebuf_pos >> 6] |= ((!!x) << (63 - writebuf_pos%64));
+    writebuf_pos++;
+    for (; n < BlockSize && bits && (bits--, !!x); x >>= 1, n++) {
+      writebuf[writebuf_pos >> 6] |= ((!!x) << (63 - writebuf_pos%64));
+      
+      writebuf[writebuf_pos >> 6] |= ((x & 1u) << (63 - writebuf_pos%64));
+      for (; n < BlockSize - 1 && bits && (bits--, !(x & 1u)); x >>= 1, n++) {
+        writebuf[writebuf_pos >> 6] |= ((x & 1u) << (63 - writebuf_pos%64));
+      }
+    }
+  }
+  // flush writebuf
+  int e;
+  for (e=0; e < writebuf_pos >> 6; e++)
+    stream.write_bits(writebuf[e], 64);
+  stream.write_bits(writebuf[e], writebuf_pos%64);
+
+  //  writebuf |= ((!!x) << (63 - writebuf_pos));
+  //  if (++writebuf_pos == 64) {stream.write_bits(writebuf, 64); writebuf_pos=0; writebuf=0;}
+  //  for (; n < BlockSize && bits && (bits--, !!x); x >>= 1, n++) {
+  //    writebuf |= ((!!x) << (63 - writebuf_pos));
+  //    if (++writebuf_pos == 64) {stream.write_bits(writebuf, 64); writebuf_pos=0; writebuf=0;}
+  //    
+  //    writebuf |= ((x & 1u) << (63 - writebuf_pos));
+  //    if (++writebuf_pos == 64) {stream.write_bits(writebuf, 64); writebuf_pos=0; writebuf=0;}
+  //    for (; n < BlockSize - 1 && bits && (bits--, !(x & 1u)); x >>= 1, n++) {
+  //      writebuf |= ((x & 1u) << (63 - writebuf_pos));
+  //      if (++writebuf_pos == 64) {stream.write_bits(writebuf, 64); writebuf_pos=0; writebuf=0;}
+  //    }
+  //  }
+  //}
+  //// flush writebuf
+  //stream.write_bits(writebuf, writebuf_pos+1);
+#else
     for (; n < BlockSize && bits && (bits--, stream.write_bit(!!x)); x >>= 1, n++)
       for (; n < BlockSize - 1 && bits && (bits--, !stream.write_bit(x & 1u)); x >>= 1, n++)
         ;
   }
+#endif
 }
 
 // compress sequence of size > 64 integers ("large block")
@@ -401,12 +445,22 @@ void inline __device__ encode_lblock(BlockWriter<BlockSize> &stream,
   uint kmin = intprec > maxprec ? intprec - maxprec : 0;
   uint bits = maxbits;
 
+#ifdef WRITE_BIT_COMP
+  uint64 writebuf = 0;
+  int writebuf_pos = 0;
+#endif
+
   for (uint k = intprec, n = 0; bits && k-- > kmin;) {
     // step 1: extract n bits of bit plane #k
     uint m = min(n, bits);
     bits -= m;
     for (int i = 0; i < m; i++) {
+#ifdef WRITE_BIT_COMP
+      writebuf |= (((ublock[i] >> k) & 1u) << (63 - writebuf_pos));
+      if (++writebuf_pos == 64) {stream.write_bits(writebuf, 64); writebuf_pos=0; writebuf=0;}
+#else
       stream.write_bit((ublock[i] >> k) & 1u);
+#endif
     }
     // step 2: count remaining one-bits in bit plane
     uint64 x = 0;
@@ -416,12 +470,25 @@ void inline __device__ encode_lblock(BlockWriter<BlockSize> &stream,
     // step 3: unary run-length encode remainder of bit plane
     for (; bits && n < BlockSize; n++) {
       bits--;
+#ifdef WRITE_BIT_COMP
+      writebuf |= ((!!x) << (63 - writebuf_pos));
+      if (++writebuf_pos == 64) {stream.write_bits(writebuf, 64); writebuf_pos=0; writebuf=0;}
+      if (!!x) {
+#else
       if (stream.write_bit(!!x)) {
+#endif
         // positive group test (x > 0); scan for one-bit
         for (x--; bits && n < BlockSize - 1; n++) {
           bits--;
+#ifdef WRITE_BIT_COMP
+          writebuf |= (((uint64)((ublock[n] >> k) & 1u)) << (63 - writebuf_pos));
+          if (++writebuf_pos == 64) {stream.write_bits(writebuf, 64); writebuf_pos=0; writebuf=0;}
+          if ((uint64)((ublock[n] >> k) & 1u))
+            break;
+#else
           if (stream.write_bit((uint64)((ublock[n] >> k) & 1u)))
             break;
+#endif
         }
       } else {
         // negative group test (x==0); done with bit plane
@@ -429,6 +496,12 @@ void inline __device__ encode_lblock(BlockWriter<BlockSize> &stream,
       }
     }
   }
+#ifdef WRITE_BIT_COMP
+  // flush writebuf
+  stream.write_bits(writebuf, writebuf_pos+1);
+  writebuf_pos=0;
+  writebuf=0;
+#endif
 }
 
 
@@ -450,10 +523,13 @@ void inline __device__ zfp_encode_block(Scalar *fblock,
     Int iblock[BlockSize];
     fwd_cast<Scalar, Int, BlockSize>(iblock, fblock, emax);
 
-    if (BlockSize <= 64)
+    if (BlockSize <= 64) {
+      //printf("%u - small\n", block_idx);
       encode_block<Int, BlockSize>(block_writer, maxbits - ebits, maxprec, iblock);
-    else
+    } else {
+      //printf("%u - large\n", block_idx);
       encode_lblock<Int, BlockSize>(block_writer, maxbits - ebits, maxprec, iblock);
+    }
   }
 }
 
