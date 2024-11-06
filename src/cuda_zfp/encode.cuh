@@ -152,6 +152,36 @@ template<int BlockSize>
 struct transform;
 
 template<>
+struct transform<256>
+{
+  template<typename Int>
+  __device__ void fwd_xform(Int *p)
+  {
+    uint x, y, z, w;
+    /* transform along x */
+    for (w = 0; w < 4; w++)
+      for (z = 0; z < 4; z++)
+        for (y = 0; y < 4; y++)
+          fwd_lift<Int,1>(p + 4 * y + 16 * z + 64 * w);
+    /* transform along y */
+    for (x = 0; x < 4; x++)
+      for (w = 0; w < 4; w++)
+        for (z = 0; z < 4; z++)
+          fwd_lift<Int,4>(p + 1 * x + 16 * z + 64 * w);
+    /* transform along z */
+    for (y = 0; y < 4; y++)
+      for (x = 0; x < 4; x++)
+        for (w = 0; w < 4; w++)
+          fwd_lift<Int,16>(p + 1 * x + 4 * y + 64 * w);
+    /* transform along w */
+    for (z = 0; z < 4; z++)
+      for (y = 0; y < 4; y++)
+        for (x = 0; x < 4; x++)
+          fwd_lift<Int,64>(p + 1 * x + 4 * y + 16 * z);
+   }
+};
+
+template<>
 struct transform<64>
 {
   template<typename Int>
@@ -331,8 +361,9 @@ void inline __device__ encode_block(BlockWriter<BlockSize> &stream,
   for (uint k = intprec, n = 0; bits && k-- > kmin;) {
     // step 1: extract bit plane #k to x
     uint64 x = 0;
-    for (uint i = 0; i < BlockSize; i++)
+    for (int i = 0; i < BlockSize; i++) {
       x += (uint64)((ublock[i] >> k) & 1u) << i;
+    }
     // step 2: encode first n bits of bit plane
     uint m = min(n, bits);
     bits -= m;
@@ -343,6 +374,63 @@ void inline __device__ encode_block(BlockWriter<BlockSize> &stream,
         ;
   }
 }
+
+// compress sequence of size > 64 integers ("large block")
+template<typename Int, int BlockSize>
+void inline __device__ encode_lblock(BlockWriter<BlockSize> &stream,
+                                    int maxbits,
+                                    int maxprec,
+                                    Int *iblock)
+{
+  // perform decorrelating transform
+  transform<BlockSize> tform;
+  tform.fwd_xform(iblock);
+
+#if ZFP_ROUNDING_MODE == ZFP_ROUND_FIRST
+  // bias values to achieve proper rounding
+  fwd_round<Int, BlockSize>(iblock, maxprec);
+#endif
+
+  // reorder signed coefficients and convert to unsigned integer
+  typedef typename zfp_traits<Int>::UInt UInt;
+  UInt ublock[BlockSize];
+  fwd_order<Int, UInt, BlockSize>(ublock, iblock);
+
+  // encode integer coefficients
+  uint intprec = (uint)(CHAR_BIT * sizeof(UInt));
+  uint kmin = intprec > maxprec ? intprec - maxprec : 0;
+  uint bits = maxbits;
+
+  for (uint k = intprec, n = 0; bits && k-- > kmin;) {
+    // step 1: extract n bits of bit plane #k
+    uint m = min(n, bits);
+    bits -= m;
+    for (int i = 0; i < m; i++) {
+      stream.write_bit((ublock[i] >> k) & 1u);
+    }
+    // step 2: count remaining one-bits in bit plane
+    uint64 x = 0;
+    for (int i = m; i < BlockSize; i++) {
+      x += (uint64)((ublock[i] >> k) & 1u);
+    }
+    // step 3: unary run-length encode remainder of bit plane
+    for (; bits && n < BlockSize; n++) {
+      bits--;
+      if (stream.write_bit(!!x)) {
+        // positive group test (x > 0); scan for one-bit
+        for (x--; bits && n < BlockSize - 1; n++) {
+          bits--;
+          if (stream.write_bit((uint64)((ublock[n] >> k) & 1u)))
+            break;
+        }
+      } else {
+        // negative group test (x==0); done with bit plane
+        break;
+      }
+    }
+  }
+}
+
 
 template<typename Scalar, int BlockSize>
 void inline __device__ zfp_encode_block(Scalar *fblock,
@@ -362,9 +450,33 @@ void inline __device__ zfp_encode_block(Scalar *fblock,
     Int iblock[BlockSize];
     fwd_cast<Scalar, Int, BlockSize>(iblock, fblock, emax);
 
-
-    encode_block<Int, BlockSize>(block_writer, maxbits - ebits, maxprec, iblock);
+    if (BlockSize <= 64)
+      encode_block<Int, BlockSize>(block_writer, maxbits - ebits, maxprec, iblock);
+    else
+      encode_lblock<Int, BlockSize>(block_writer, maxbits - ebits, maxprec, iblock);
   }
+}
+
+template<>
+void inline __device__ zfp_encode_block<int, 256>(int *fblock,
+                                             const int maxbits,
+                                             const uint block_idx,
+                                             Word *stream)
+{
+  BlockWriter<256> block_writer(stream, maxbits, block_idx);
+  const int intprec = get_precision<int>();
+  encode_lblock<int, 256>(block_writer, maxbits, intprec, fblock);
+}
+
+template<>
+void inline __device__ zfp_encode_block<long long int, 256>(long long int *fblock,
+                                                       const int maxbits,
+                                                       const uint block_idx,
+                                                       Word *stream)
+{
+  BlockWriter<256> block_writer(stream, maxbits, block_idx);
+  const int intprec = get_precision<long long int>();
+  encode_lblock<long long int, 256>(block_writer, maxbits, intprec, fblock);
 }
 
 template<>

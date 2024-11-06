@@ -49,7 +49,7 @@ void gather3(Scalar* q, const Scalar* p, int sx, int sy, int sz)
 template<class Scalar>
 __global__
 void 
-cudaEncode(const uint maxbits,
+cudaEncode3(const uint maxbits,
            const Scalar* scalars,
            Word *stream,
            const uint3 dims,
@@ -158,7 +158,7 @@ size_t encode3launch(uint3 dims,
   cudaEventRecord(start, custream);
 #endif
 
-  cudaEncode<Scalar> <<<grid_size, block_size, 0, custream>>>
+  cudaEncode3<Scalar> <<<grid_size, block_size, 0, custream>>>
     (maxbits,
      d_data,
      stream,
@@ -192,7 +192,7 @@ size_t encode3launch(uint3 dims,
 // Just pass the raw pointer to the "real" encode
 //
 template<class Scalar>
-size_t encode(uint3 dims, 
+size_t encode3(uint3 dims, 
               int3 stride,
               Scalar *d_data,
               Word *stream,

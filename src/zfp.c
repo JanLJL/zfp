@@ -1107,11 +1107,10 @@ zfp_compress(zfp_stream* zfp, const zfp_field* field)
     {{{ compress_cuda_int32_1,         compress_cuda_int64_1,         compress_cuda_float_1,         compress_cuda_double_1 },
       { compress_strided_cuda_int32_2, compress_strided_cuda_int64_2, compress_strided_cuda_float_2, compress_strided_cuda_double_2 },
       { compress_strided_cuda_int32_3, compress_strided_cuda_int64_3, compress_strided_cuda_float_3, compress_strided_cuda_double_3 },
-      { NULL,                            NULL,                            NULL,                            NULL }},
+      { compress_strided_cuda_int32_4, compress_strided_cuda_int64_4, compress_strided_cuda_float_4, compress_strided_cuda_double_4 }},
      {{ compress_strided_cuda_int32_1, compress_strided_cuda_int64_1, compress_strided_cuda_float_1, compress_strided_cuda_double_1 },
       { compress_strided_cuda_int32_2, compress_strided_cuda_int64_2, compress_strided_cuda_float_2, compress_strided_cuda_double_2 },
-      { compress_strided_cuda_int32_3, compress_strided_cuda_int64_3, compress_strided_cuda_float_3, compress_strided_cuda_double_3 },
-      { NULL,                            NULL,                            NULL,                            NULL }}},
+      { compress_strided_cuda_int32_4, compress_strided_cuda_int64_4, compress_strided_cuda_float_4, compress_strided_cuda_double_4 }}},
 #else
     {{{ NULL }}},
 #endif
@@ -1167,11 +1166,11 @@ zfp_decompress(zfp_stream* zfp, zfp_field* field)
     {{{ decompress_cuda_int32_1,         decompress_cuda_int64_1,         decompress_cuda_float_1,         decompress_cuda_double_1 },
       { decompress_strided_cuda_int32_2, decompress_strided_cuda_int64_2, decompress_strided_cuda_float_2, decompress_strided_cuda_double_2 },
       { decompress_strided_cuda_int32_3, decompress_strided_cuda_int64_3, decompress_strided_cuda_float_3, decompress_strided_cuda_double_3 },
-      { NULL,                            NULL,                            NULL,                            NULL }},
+      { decompress_strided_cuda_int32_4, decompress_strided_cuda_int64_4, decompress_strided_cuda_float_4, decompress_strided_cuda_double_4 }},
      {{ decompress_strided_cuda_int32_1, decompress_strided_cuda_int64_1, decompress_strided_cuda_float_1, decompress_strided_cuda_double_1 },
       { decompress_strided_cuda_int32_2, decompress_strided_cuda_int64_2, decompress_strided_cuda_float_2, decompress_strided_cuda_double_2 },
       { decompress_strided_cuda_int32_3, decompress_strided_cuda_int64_3, decompress_strided_cuda_float_3, decompress_strided_cuda_double_3 },
-      { NULL,                            NULL,                            NULL,                            NULL }}},
+      { decompress_strided_cuda_int32_4, decompress_strided_cuda_int64_4, decompress_strided_cuda_float_4, decompress_strided_cuda_double_4 }}},
 #else
     {{{ NULL }}},
 #endif

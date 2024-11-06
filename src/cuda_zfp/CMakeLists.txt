@@ -14,6 +14,7 @@ set(cuZFP_sources
     encode1.cuh
     encode2.cuh
     encode3.cuh
+    encode4.cuh
     pointers.cuh
     type_info.cuh)
 
