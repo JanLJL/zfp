@@ -184,7 +184,7 @@ size_t encode(uint dims[4], int4 stride, int bits_per_block, T *d_data, Word *d_
 }
 
 template<typename T>
-size_t decode(uint ndims[4], int4 stride, int bits_per_block, Word *stream, T *out)
+size_t decode(uint ndims[4], int4 stride, int bits_per_block, Word *stream, T *out, cudaStream_t custream)
 {
 
   int d = 0;
@@ -209,6 +209,7 @@ size_t decode(uint ndims[4], int4 stride, int bits_per_block, Word *stream, T *o
     s.z = stride.z; 
     s.w = stride.w;
 
+    // TODO: NO MULTISTREAM SUPPORT YET
     stream_bytes = cuZFP::decode4<T>(dims, s, stream, out, bits_per_block); 
   }
   else if(d == 3)
