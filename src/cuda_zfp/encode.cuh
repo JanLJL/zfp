@@ -3,7 +3,7 @@
 
 #include "shared.h"
 
-//#define WRITE_BIT_COMP
+#define WRITE_BIT_COMP
 
 namespace cuZFP
 {
